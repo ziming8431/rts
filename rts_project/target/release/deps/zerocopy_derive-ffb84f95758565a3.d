@@ -1,0 +1,8 @@
+C:\Users\NYON ZI MING\Music\Project_filess\Year3\real_time_system\rts_manufacturing (1)\rts_project\target\release\deps\zerocopy_derive-ffb84f95758565a3.d: C:\Users\NYON\ ZI\ MING\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zerocopy-derive-0.8.30\src\lib.rs C:\Users\NYON\ ZI\ MING\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zerocopy-derive-0.8.30\src\enum.rs C:\Users\NYON\ ZI\ MING\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zerocopy-derive-0.8.30\src\ext.rs C:\Users\NYON\ ZI\ MING\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zerocopy-derive-0.8.30\src\repr.rs
+
+C:\Users\NYON ZI MING\Music\Project_filess\Year3\real_time_system\rts_manufacturing (1)\rts_project\target\release\deps\zerocopy_derive-ffb84f95758565a3.dll: C:\Users\NYON\ ZI\ MING\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zerocopy-derive-0.8.30\src\lib.rs C:\Users\NYON\ ZI\ MING\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zerocopy-derive-0.8.30\src\enum.rs C:\Users\NYON\ ZI\ MING\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zerocopy-derive-0.8.30\src\ext.rs C:\Users\NYON\ ZI\ MING\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zerocopy-derive-0.8.30\src\repr.rs
+
+C:\Users\NYON\ ZI\ MING\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zerocopy-derive-0.8.30\src\lib.rs:
+C:\Users\NYON\ ZI\ MING\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zerocopy-derive-0.8.30\src\enum.rs:
+C:\Users\NYON\ ZI\ MING\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zerocopy-derive-0.8.30\src\ext.rs:
+C:\Users\NYON\ ZI\ MING\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\zerocopy-derive-0.8.30\src\repr.rs:
