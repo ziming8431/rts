@@ -7,9 +7,9 @@ description = "Real-Time Sensor-Actuator System for Automated Manufacturing"
 
 [dependencies]
 # Concurrency and Threading
-crossbeam = "0.8"
-crossbeam-channel = "0.5"
-parking_lot = "0.12"
+crossbeam = "0.8.4"
+crossbeam-channel = "0.5.15"
+parking_lot = "0.12.5"
 
 # Async Runtime
 tokio = { version = "1.35", features = ["full", "rt-multi-thread", "sync", "time", "macros"] }
@@ -32,7 +32,7 @@ statrs = "0.16"
 atomic = "0.6"
 
 [dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = "0.8.1"
 
 [[bench]]
 name = "system_benchmark"
