@@ -171,6 +171,124 @@ fn bench_predictive_control(c: &mut Criterion) {
     });
 }
 
+/// Benchmark sync primitive comparison (Mutex vs RwLock vs Atomic)
+/// This is a CORE requirement for benchmarking lock contention
+fn bench_sync_primitive_comparison(c: &mut Criterion) {
+    let mut group = c.benchmark_group("sync_primitives");
+    
+    // Mutex benchmark
+    let mutex_data = parking_lot::Mutex::new(0u64);
+    group.bench_function("mutex_lock_unlock", |b| {
+        b.iter(|| {
+            let mut guard = mutex_data.lock();
+            *guard += 1;
+            black_box(*guard)
+        })
+    });
+    
+    // RwLock read benchmark
+    let rwlock_data = parking_lot::RwLock::new(0u64);
+    group.bench_function("rwlock_read", |b| {
+        b.iter(|| {
+            let guard = rwlock_data.read();
+            black_box(*guard)
+        })
+    });
+    
+    // RwLock write benchmark
+    group.bench_function("rwlock_write", |b| {
+        b.iter(|| {
+            let mut guard = rwlock_data.write();
+            *guard += 1;
+            black_box(*guard)
+        })
+    });
+    
+    // Atomic benchmark
+    let atomic_data = std::sync::atomic::AtomicU64::new(0);
+    group.bench_function("atomic_fetch_add", |b| {
+        b.iter(|| {
+            black_box(atomic_data.fetch_add(1, std::sync::atomic::Ordering::SeqCst))
+        })
+    });
+    
+    group.finish();
+}
+
+/// Benchmark sensor count scaling (3 vs 6 vs 10 sensors)
+/// This is a CORE requirement for normal vs high-load comparison
+fn bench_sensor_count_scaling(c: &mut Criterion) {
+    let mut group = c.benchmark_group("sensor_scaling");
+    
+    for sensor_count in [3, 6, 10].iter() {
+        group.bench_with_input(
+            BenchmarkId::new("sensor_count", sensor_count),
+            sensor_count,
+            |b, &count| {
+                // Create multiple sensors
+                let mut sensors: Vec<SensorSimulator> = (0..count)
+                    .map(|i| SensorSimulator::new(i, &format!("Sensor{}", i)))
+                    .collect();
+                
+                let mut processor = DataProcessor::new(count);
+                
+                b.iter(|| {
+                    // Generate and process data from all sensors
+                    for sensor in sensors.iter_mut() {
+                        let reading = sensor.generate_reading();
+                        let _ = processor.process(&reading);
+                        black_box(&reading);
+                    }
+                })
+            },
+        );
+    }
+    
+    group.finish();
+}
+
+/// Benchmark IPC channel buffer size comparison
+/// This is a CORE requirement for comparing different IPC mechanisms
+fn bench_ipc_channel_comparison(c: &mut Criterion) {
+    let mut group = c.benchmark_group("ipc_channel_size");
+    
+    // Test different buffer sizes
+    for buffer_size in [10, 50, 100, 500].iter() {
+        group.bench_with_input(
+            BenchmarkId::new("bounded_channel", buffer_size),
+            buffer_size,
+            |b, &size| {
+                let (sender, receiver) = crossbeam_channel::bounded::<u64>(size);
+                
+                b.iter(|| {
+                    // Send and receive to measure round-trip
+                    let _ = sender.try_send(black_box(42u64));
+                    let _ = receiver.try_recv();
+                })
+            },
+        );
+    }
+    
+    // Compare bounded vs unbounded channel
+    let (bounded_tx, bounded_rx) = crossbeam_channel::bounded::<u64>(100);
+    group.bench_function("bounded_100", |b| {
+        b.iter(|| {
+            let _ = bounded_tx.try_send(black_box(42u64));
+            let _ = bounded_rx.try_recv();
+        })
+    });
+    
+    let (unbounded_tx, unbounded_rx) = crossbeam_channel::unbounded::<u64>();
+    group.bench_function("unbounded", |b| {
+        b.iter(|| {
+            let _ = unbounded_tx.send(black_box(42u64));
+            let _ = unbounded_rx.try_recv();
+        })
+    });
+    
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_sensor_generation,
@@ -183,6 +301,9 @@ criterion_group!(
     bench_sensor_cycle,
     bench_scaling,
     bench_predictive_control,
+    bench_sync_primitive_comparison,
+    bench_sensor_count_scaling,
+    bench_ipc_channel_comparison,
 );
 
 criterion_main!(benches);

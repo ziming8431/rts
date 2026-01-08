@@ -25,6 +25,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
+use std::fs::File;
+use std::io::Write;
 
 // ----------------------------------------------------------------------------
 // Main System Integration
@@ -63,6 +65,10 @@ fn run_demonstration() {
     // 5. Demonstrate async implementation (comparison)
     println!("\n=== Part 5: Async vs Threaded Comparison ===");
     run_async_comparison();
+
+    // 6. Save benchmark results to files
+    println!("\n=== Part 6: Saving Results to Files ===");
+    save_benchmark_results();
 
     println!("\n============================================================");
     println!("  Demonstration Complete");
@@ -546,6 +552,151 @@ fn run_async_benchmark(iterations: usize) -> Vec<u64> {
         
         latencies
     })
+}
+
+// ----------------------------------------------------------------------------
+// Benchmark File Export
+// ----------------------------------------------------------------------------
+
+/// Save benchmark results to JSON and TXT files
+fn save_benchmark_results() {
+    println!("Saving benchmark results to files...");
+    
+    // Run a quick benchmark to get data
+    let mut benchmark = SystemBenchmark::new();
+    let iterations = 500;
+    
+    // Collect sensor generation times
+    let mut sensor_sim = rts_manufacturing::sensor::SensorSimulator::new(0, "Test");
+    for _ in 0..iterations {
+        benchmark.sensor_generation.start();
+        let _ = sensor_sim.generate_reading();
+        benchmark.sensor_generation.stop();
+    }
+    
+    // Collect processing times
+    let mut processor = rts_manufacturing::sensor::DataProcessor::new(NUM_SENSOR_TYPES);
+    for i in 0..iterations {
+        let reading = rts_manufacturing::types::SensorReading::new(
+            0, "Test".to_string(), 50.0 + (i as f64 * 0.1), i as u64
+        );
+        benchmark.data_processing.start();
+        let _ = processor.process(&reading);
+        benchmark.data_processing.stop();
+    }
+    
+    // Collect PID control times
+    let mut pid = rts_manufacturing::pid_controller::PidController::with_defaults("Test");
+    pid.set_setpoint(50.0);
+    for i in 0..iterations {
+        benchmark.pid_control.start();
+        let _ = pid.update(45.0 + (i as f64 * 0.01));
+        benchmark.pid_control.stop();
+    }
+    
+    // Collect channel times
+    let (tx, rx) = crossbeam_channel::bounded::<u64>(100);
+    for i in 0..iterations {
+        benchmark.data_transmission.start();
+        let _ = tx.send(i as u64);
+        benchmark.data_transmission.stop();
+        benchmark.actuator_reception.start();
+        let _ = rx.recv();
+        benchmark.actuator_reception.stop();
+    }
+    
+    // Save JSON benchmark results
+    let json = benchmark.export_json();
+    match File::create("benchmark_results.json") {
+        Ok(mut file) => {
+            if let Err(e) = writeln!(file, "{}", json) {
+                eprintln!("Failed to write benchmark JSON: {}", e);
+            } else {
+                println!("  ✓ Saved benchmark_results.json");
+            }
+        }
+        Err(e) => eprintln!("Failed to create benchmark JSON file: {}", e),
+    }
+    
+    // Save timing log as formatted text
+    save_timing_log(&benchmark);
+}
+
+/// Save detailed timing log to text file
+fn save_timing_log(benchmark: &SystemBenchmark) {
+    let mut log = String::new();
+    
+    log.push_str("============================================================\n");
+    log.push_str("  RTS Manufacturing System - Timing Log\n");
+    log.push_str("============================================================\n");
+    log.push_str(&format!("Generated at: {:?}\n\n", std::time::SystemTime::now()));
+    
+    // Sensor Generation Stats
+    let stats = benchmark.sensor_generation.get_stats();
+    log.push_str("=== Sensor Generation ===\n");
+    log.push_str(&format!("  Iterations: {}\n", stats.count));
+    log.push_str(&format!("  Min:        {:.3} µs\n", stats.min_ns as f64 / 1000.0));
+    log.push_str(&format!("  Max:        {:.3} µs\n", stats.max_ns as f64 / 1000.0));
+    log.push_str(&format!("  Mean:       {:.3} µs\n", stats.mean_ns / 1000.0));
+    log.push_str(&format!("  Std Dev:    {:.3} µs\n", stats.std_dev_ns / 1000.0));
+    log.push_str(&format!("  P95:        {:.3} µs\n", stats.p95_ns as f64 / 1000.0));
+    log.push_str(&format!("  P99:        {:.3} µs\n", stats.p99_ns as f64 / 1000.0));
+    log.push_str(&format!("  Jitter:     {:.3} µs\n\n", stats.jitter_ns as f64 / 1000.0));
+    
+    // Data Processing Stats
+    let stats = benchmark.data_processing.get_stats();
+    log.push_str("=== Data Processing ===\n");
+    log.push_str(&format!("  Iterations: {}\n", stats.count));
+    log.push_str(&format!("  Min:        {:.3} µs\n", stats.min_ns as f64 / 1000.0));
+    log.push_str(&format!("  Max:        {:.3} µs\n", stats.max_ns as f64 / 1000.0));
+    log.push_str(&format!("  Mean:       {:.3} µs\n", stats.mean_ns / 1000.0));
+    log.push_str(&format!("  Deadline:   {:.1} µs\n", PROCESSING_DEADLINE.as_nanos() as f64 / 1000.0));
+    let violations = benchmark.data_processing.get_durations()
+        .iter().filter(|&&d| d > PROCESSING_DEADLINE.as_nanos() as u64).count();
+    log.push_str(&format!("  Violations: {} ({:.2}%)\n\n", 
+        violations, violations as f64 / stats.count as f64 * 100.0));
+    
+    // PID Control Stats
+    let stats = benchmark.pid_control.get_stats();
+    log.push_str("=== PID Control ===\n");
+    log.push_str(&format!("  Iterations: {}\n", stats.count));
+    log.push_str(&format!("  Min:        {:.3} µs\n", stats.min_ns as f64 / 1000.0));
+    log.push_str(&format!("  Max:        {:.3} µs\n", stats.max_ns as f64 / 1000.0));
+    log.push_str(&format!("  Mean:       {:.3} µs\n", stats.mean_ns / 1000.0));
+    log.push_str(&format!("  Deadline:   {:.1} ms\n", ACTUATOR_DEADLINE.as_nanos() as f64 / 1_000_000.0));
+    let violations = benchmark.pid_control.get_durations()
+        .iter().filter(|&&d| d > ACTUATOR_DEADLINE.as_nanos() as u64).count();
+    log.push_str(&format!("  Violations: {} ({:.2}%)\n\n", 
+        violations, violations as f64 / stats.count as f64 * 100.0));
+    
+    // Channel Stats
+    let stats = benchmark.data_transmission.get_stats();
+    log.push_str("=== Data Transmission (Channel Send) ===\n");
+    log.push_str(&format!("  Iterations: {}\n", stats.count));
+    log.push_str(&format!("  Min:        {:.3} µs\n", stats.min_ns as f64 / 1000.0));
+    log.push_str(&format!("  Max:        {:.3} µs\n", stats.max_ns as f64 / 1000.0));
+    log.push_str(&format!("  Mean:       {:.3} µs\n", stats.mean_ns / 1000.0));
+    log.push_str(&format!("  Deadline:   {:.1} µs\n", TRANSMISSION_DEADLINE.as_nanos() as f64 / 1000.0));
+    let violations = benchmark.data_transmission.get_durations()
+        .iter().filter(|&&d| d > TRANSMISSION_DEADLINE.as_nanos() as u64).count();
+    log.push_str(&format!("  Violations: {} ({:.2}%)\n\n", 
+        violations, violations as f64 / stats.count as f64 * 100.0));
+    
+    log.push_str("============================================================\n");
+    log.push_str("  End of Timing Log\n");
+    log.push_str("============================================================\n");
+    
+    // Write to file
+    match File::create("timing_log.txt") {
+        Ok(mut file) => {
+            if let Err(e) = write!(file, "{}", log) {
+                eprintln!("Failed to write timing log: {}", e);
+            } else {
+                println!("  ✓ Saved timing_log.txt");
+            }
+        }
+        Err(e) => eprintln!("Failed to create timing log file: {}", e),
+    }
 }
 
 // ----------------------------------------------------------------------------
