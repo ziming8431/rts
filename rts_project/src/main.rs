@@ -67,10 +67,6 @@ fn run_demonstration() {
     // COMPARISON BENCHMARKS (Required for Assignment)
     // =========================================================================
     
-    // 5. FAIR Async vs Threaded Comparison (Both do SAME work)
-    println!("\n=== Part 5: Fair Async vs Threaded Comparison ===");
-    run_fair_async_comparison();
-    
     // 6. Lock Contention Comparison (High vs Low Contention)
     println!("\n=== Part 6: Lock Contention Comparison ===");
     run_lock_contention_comparison();
