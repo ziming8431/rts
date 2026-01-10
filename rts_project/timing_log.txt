@@ -1,15 +1,108 @@
 ============================================================
   RTS Manufacturing System - Timing Log
 ============================================================
-Generated at: SystemTime { intervals: 134124037313753927 }
+Generated at: SystemTime { intervals: 134124920567589140 }
 
 === Sensor Generation ===
   Iterations: 500
-  Min: 0.100 µs, Max: 19.000 µs, Mean: 0.625 µs
+  Min: 0.100 us
+  Max: 19.100 us
+  Mean: 0.628 us
+  Std Dev: 2.370 us
+  P50: 0.200 us
+  P95: 0.300 us
+  P99: 13.100 us
+  Jitter: 19.000 us
 
 === Data Processing ===
   Iterations: 500
-  Min: 0.400 µs, Max: 2.700 µs, Mean: 0.495 µs
-  Deadline: 200.0 µs
+  Min: 0.300 us
+  Max: 2.600 us
+  Mean: 0.455 us
+  Std Dev: 0.145 us
+  P50: 0.400 us
+  P95: 0.500 us
+  P99: 0.500 us
+  Jitter: 2.300 us
 
+=== Data Transmission ===
+  Iterations: 500
+  Min: 0.000 us
+  Max: 2.800 us
+  Mean: 0.107 us
+  Std Dev: 0.122 us
+  P50: 0.100 us
+  P95: 0.100 us
+  P99: 0.200 us
+  Jitter: 2.800 us
+
+=== Actuator Reception ===
+  Iterations: 500
+  Min: 0.000 us
+  Max: 0.500 us
+  Mean: 0.099 us
+  Std Dev: 0.024 us
+  P50: 0.100 us
+  P95: 0.100 us
+  P99: 0.100 us
+  Jitter: 0.500 us
+
+=== PID Control ===
+  Iterations: 500
+  Min: 0.100 us
+  Max: 0.300 us
+  Mean: 0.103 us
+  Std Dev: 0.019 us
+  P50: 0.100 us
+  P95: 0.100 us
+  P99: 0.200 us
+  Jitter: 0.200 us
+
+=== Feedback Transmission ===
+  Iterations: 0
+  Min: 0.000 us
+  Max: 0.000 us
+  Mean: 0.000 us
+  Std Dev: 0.000 us
+  P50: 0.000 us
+  P95: 0.000 us
+  P99: 0.000 us
+  Jitter: 0.000 us
+
+=== End-to-End Latency ===
+  Iterations: 200
+  Min: 8.200 us
+  Max: 83.700 us
+  Mean: 12.227 us
+  Std Dev: 6.713 us
+  P50: 10.400 us
+  P95: 23.800 us
+  P99: 28.600 us
+  Jitter: 75.500 us
+
+=== Lock Contention ===
+  Iterations: 0
+  Min: 0.000 us
+  Max: 0.000 us
+  Mean: 0.000 us
+  Std Dev: 0.000 us
+  P50: 0.000 us
+  P95: 0.000 us
+  P99: 0.000 us
+  Jitter: 0.000 us
+
+=== Throughput Summary ===
+  Min: 81390.14 ops/sec
+  Max: 81390.14 ops/sec
+  Avg: 81390.14 ops/sec
+
+=== Deadline Analysis ===
+  Processing Deadline (200.0 us):
+    Violations: 0 / 500 (0.00%)
+  Transmission Deadline (100.0 us):
+    Violations: 0 / 500 (0.00%)
+  Actuator Control Deadline (2000.0 us):
+    Violations: 0 / 500 (0.00%)
+  Feedback Deadline (500.0 us):
+    Violations: 0 / 0 (0.00%)
 ============================================================

@@ -1,1 +1,0 @@
-{"group_id":"v2_lock_contention","function_id":"parking_lot_mutex_4threads","value_str":null,"throughput":{"Elements":10000},"full_id":"v2_lock_contention/parking_lot_mutex_4threads","directory_name":"v2_lock_contention/parking_lot_mutex_4threads","title":"v2_lock_contention/parking_lot_mutex_4threads"}

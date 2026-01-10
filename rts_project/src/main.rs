@@ -67,16 +67,12 @@ fn run_demonstration() {
     // COMPARISON BENCHMARKS (Required for Assignment)
     // =========================================================================
     
-    // 6. Lock Contention Comparison (High vs Low Contention)
-    println!("\n=== Part 6: Lock Contention Comparison ===");
-    run_lock_contention_comparison();
-    
-    // 7. Synchronization Primitives Comparison
-    println!("\n=== Part 7: Synchronization Primitives Comparison ===");
+    // 6. Synchronization Primitives Comparison
+    println!("\n=== Part 6: Synchronization Primitives Comparison ===");
     run_sync_primitives_comparison();
     
-    // 8. Channel Types Comparison
-    println!("\n=== Part 8: Channel Types Comparison ===");
+    // 7. Channel Types Comparison
+    println!("\n=== Part 7: Channel Types Comparison ===");
     run_channel_comparison();
 
     // 9. Save all benchmark results to files
@@ -393,380 +389,44 @@ fn run_benchmarks() {
         benchmark.actuator_reception.stop();
     }
 
+    println!("  Benchmarking end-to-end cycle...");
+    let shared = SharedResources::new();
+    let ipc = IpcManager::new();
+    let running = Arc::new(AtomicBool::new(true));
+
+    let mut sensor = SensorModule::new(
+        ipc.get_sensor_sender(),
+        ipc.get_feedback_receiver(),
+        shared.clone(),
+        Arc::clone(&running),
+    );
+
+    let mut actuator = ActuatorModule::new(
+        ipc.get_sensor_receiver(),
+        ipc.get_feedback_sender(),
+        shared,
+        running,
+    );
+
+    let end_to_end_iterations = 200;
+    let start = Instant::now();
+    for _ in 0..end_to_end_iterations {
+        benchmark.end_to_end.start();
+        let _ = sensor.run_cycle();
+        let _ = actuator.run_cycle();
+        benchmark.end_to_end.stop();
+    }
+    let elapsed = start.elapsed();
+    if elapsed.as_secs_f64() > 0.0 {
+        benchmark.record_throughput(end_to_end_iterations as f64 / elapsed.as_secs_f64());
+    }
+
     benchmark.print_report();
 }
 
-// ============================================================================
-// COMPARISON 1: FAIR ASYNC VS THREADED
-// ============================================================================
-
-/// Results structure for benchmark comparison
-#[derive(Debug, Clone)]
-struct ComparisonResults {
-    avg_latency_us: f64,
-    min_latency_us: f64,
-    max_latency_us: f64,
-    p99_latency_us: f64,
-    jitter_us: f64,
-    throughput: f64,
-    total_time_ms: f64,
-}
-
-fn run_fair_async_comparison() {
-    println!("Comparing async vs multi-threaded implementations...");
-    println!("IMPORTANT: Both versions perform IDENTICAL work:\n");
-    println!("  - Sensor data generation with noise");
-    println!("  - Moving average filtering");
-    println!("  - Anomaly detection (z-score)");
-    println!("  - PID control calculation");
-    println!("  - Channel communication\n");
-    
-    let iterations = 500;
-    
-    // THREADED VERSION
-    println!("Running THREADED implementation...");
-    let threaded_results = run_threaded_full_benchmark(iterations);
-    
-    // ASYNC VERSION (same work)
-    println!("Running ASYNC implementation...");
-    let async_results = run_async_full_benchmark(iterations);
-    
-    // Output
-    println!("\n╔══════════════════════════════════════════════════════════════════╗");
-    println!("║          ASYNC vs THREADED COMPARISON RESULTS                    ║");
-    println!("╠══════════════════════════════════════════════════════════════════╣");
-    println!("║ {:^20} │ {:^17} │ {:^17} ║", "Metric", "Threaded", "Async");
-    println!("╠══════════════════════════════════════════════════════════════════╣");
-    println!("║ {:^20} │ {:>14.3} µs │ {:>14.3} µs ║", 
-        "Avg Latency", threaded_results.avg_latency_us, async_results.avg_latency_us);
-    println!("║ {:^20} │ {:>14.3} µs │ {:>14.3} µs ║", 
-        "Min Latency", threaded_results.min_latency_us, async_results.min_latency_us);
-    println!("║ {:^20} │ {:>14.3} µs │ {:>14.3} µs ║", 
-        "Max Latency", threaded_results.max_latency_us, async_results.max_latency_us);
-    println!("║ {:^20} │ {:>14.3} µs │ {:>14.3} µs ║", 
-        "P99 Latency", threaded_results.p99_latency_us, async_results.p99_latency_us);
-    println!("║ {:^20} │ {:>14.3} µs │ {:>14.3} µs ║", 
-        "Jitter (Max-Min)", threaded_results.jitter_us, async_results.jitter_us);
-    println!("║ {:^20} │ {:>14.2} /s │ {:>14.2} /s ║", 
-        "Throughput", threaded_results.throughput, async_results.throughput);
-    println!("║ {:^20} │ {:>14.2} ms │ {:>14.2} ms ║", 
-        "Total Time", threaded_results.total_time_ms, async_results.total_time_ms);
-    println!("╚══════════════════════════════════════════════════════════════════╝");
-    
-    // Analysis
-    let latency_diff = ((async_results.avg_latency_us - threaded_results.avg_latency_us) 
-        / threaded_results.avg_latency_us) * 100.0;
-    let throughput_diff = ((async_results.throughput - threaded_results.throughput) 
-        / threaded_results.throughput) * 100.0;
-    
-    println!("\n--- Analysis ---");
-    if latency_diff < 0.0 {
-        println!("  ✓ Async is {:.1}% FASTER in average latency", -latency_diff);
-    } else {
-        println!("  ✓ Threaded is {:.1}% FASTER in average latency", latency_diff);
-    }
-    
-    if throughput_diff > 0.0 {
-        println!("  ✓ Async has {:.1}% HIGHER throughput", throughput_diff);
-    } else {
-        println!("  ✓ Threaded has {:.1}% HIGHER throughput", -throughput_diff);
-    }
-    
-    if async_results.jitter_us < threaded_results.jitter_us {
-        println!("  ✓ Async shows LOWER jitter - more predictable timing");
-    } else {
-        println!("  ✓ Threaded shows LOWER jitter - more predictable timing");
-    }
-}
-
-fn run_threaded_full_benchmark(iterations: usize) -> ComparisonResults {
-    use std::sync::mpsc;
-    
-    let start = Instant::now();
-    let mut latencies: Vec<u64> = Vec::with_capacity(iterations);
-    
-    let (tx, rx) = mpsc::sync_channel::<ProcessedSensorData>(100);
-    
-    let mut pid = rts_manufacturing::pid_controller::PidController::with_defaults("Threaded");
-    pid.set_setpoint(50.0);
-    
-    let mut processor = rts_manufacturing::sensor::DataProcessor::new(NUM_SENSOR_TYPES);
-    let mut sensor_sim = rts_manufacturing::sensor::SensorSimulator::new(0, "Force");
-    
-    for _i in 0..iterations {
-        let cycle_start = Instant::now();
-        
-        // SENSOR SIDE
-        let reading = sensor_sim.generate_reading();
-        let processed = processor.process(&reading);
-        tx.send(processed).unwrap();
-        
-        // ACTUATOR SIDE
-        let received = rx.recv().unwrap();
-        let (_output, _error, _dt) = pid.update(received.filtered_value);
-        
-        latencies.push(cycle_start.elapsed().as_nanos() as u64);
-    }
-    
-    let total_time = start.elapsed();
-    calculate_comparison_results(&latencies, total_time)
-}
-
-fn run_async_full_benchmark(iterations: usize) -> ComparisonResults {
-    use tokio::runtime::Runtime;
-    use tokio::sync::mpsc;
-    
-    let rt = Runtime::new().expect("Failed to create Tokio runtime");
-    
-    rt.block_on(async {
-        let start = Instant::now();
-        let mut latencies: Vec<u64> = Vec::with_capacity(iterations);
-        
-        let (tx, mut rx) = mpsc::channel::<ProcessedSensorData>(100);
-        
-        let mut pid = rts_manufacturing::pid_controller::PidController::with_defaults("Async");
-        pid.set_setpoint(50.0);
-        
-        let mut processor = rts_manufacturing::sensor::DataProcessor::new(NUM_SENSOR_TYPES);
-        let mut sensor_sim = rts_manufacturing::sensor::SensorSimulator::new(0, "Force");
-        
-        for _i in 0..iterations {
-            let cycle_start = Instant::now();
-            
-            // SENSOR SIDE (IDENTICAL to threaded)
-            let reading = sensor_sim.generate_reading();
-            let processed = processor.process(&reading);
-            tx.send(processed).await.unwrap();
-            
-            // ACTUATOR SIDE (IDENTICAL to threaded)
-            let received = rx.recv().await.unwrap();
-            let (_output, _error, _dt) = pid.update(received.filtered_value);
-            
-            latencies.push(cycle_start.elapsed().as_nanos() as u64);
-        }
-        
-        let total_time = start.elapsed();
-        calculate_comparison_results(&latencies, total_time)
-    })
-}
-
-fn calculate_comparison_results(latencies: &[u64], total_time: Duration) -> ComparisonResults {
-    let mut sorted = latencies.to_vec();
-    sorted.sort_unstable();
-    
-    let count = sorted.len();
-    let sum: u64 = sorted.iter().sum();
-    let avg = sum as f64 / count as f64;
-    let min = sorted[0];
-    let max = sorted[count - 1];
-    let p99_idx = (count as f64 * 0.99) as usize;
-    let p99 = sorted[p99_idx.min(count - 1)];
-    
-    ComparisonResults {
-        avg_latency_us: avg / 1000.0,
-        min_latency_us: min as f64 / 1000.0,
-        max_latency_us: max as f64 / 1000.0,
-        p99_latency_us: p99 as f64 / 1000.0,
-        jitter_us: (max - min) as f64 / 1000.0,
-        throughput: count as f64 / total_time.as_secs_f64(),
-        total_time_ms: total_time.as_secs_f64() * 1000.0,
-    }
-}
 
 // ============================================================================
-// COMPARISON 2: LOCK CONTENTION (High vs Low)
-// ============================================================================
-
-#[derive(Debug, Clone)]
-struct ContentionResults {
-    avg_latency_us: f64,
-    max_latency_us: f64,
-    p99_latency_us: f64,
-    throughput: f64,
-    contention_count: usize,
-}
-
-fn run_lock_contention_comparison() {
-    println!("Comparing HIGH vs LOW lock contention scenarios...\n");
-    
-    let iterations = 10000;
-    let num_threads = 4;
-    
-    println!("Running HIGH CONTENTION (single Mutex, {} threads competing)...", num_threads);
-    let high_results = run_high_contention_test(iterations, num_threads);
-    
-    println!("Running LOW CONTENTION (Atomics - lock-free)...");
-    let low_results = run_low_contention_atomic_test(iterations, num_threads);
-    
-    println!("Running MEDIUM CONTENTION (RwLock, 90% reads)...");
-    let rwlock_results = run_rwlock_contention_test(iterations, num_threads);
-    
-    println!("\n╔═══════════════════════════════════════════════════════════════════════════════╗");
-    println!("║                    LOCK CONTENTION COMPARISON RESULTS                         ║");
-    println!("║                    ({} threads, {} iterations each)                          ║", num_threads, iterations);
-    println!("╠═══════════════════════════════════════════════════════════════════════════════╣");
-    println!("║ {:^18} │ {:^15} │ {:^15} │ {:^15} ║", 
-        "Metric", "High (Mutex)", "Low (Atomic)", "Medium (RwLock)");
-    println!("╠═══════════════════════════════════════════════════════════════════════════════╣");
-    println!("║ {:^18} │ {:>12.3} µs │ {:>12.3} µs │ {:>12.3} µs ║", 
-        "Avg Latency", high_results.avg_latency_us, low_results.avg_latency_us, rwlock_results.avg_latency_us);
-    println!("║ {:^18} │ {:>12.3} µs │ {:>12.3} µs │ {:>12.3} µs ║", 
-        "Max Latency", high_results.max_latency_us, low_results.max_latency_us, rwlock_results.max_latency_us);
-    println!("║ {:^18} │ {:>12.3} µs │ {:>12.3} µs │ {:>12.3} µs ║", 
-        "P99 Latency", high_results.p99_latency_us, low_results.p99_latency_us, rwlock_results.p99_latency_us);
-    println!("║ {:^18} │ {:>12.0} /s │ {:>12.0} /s │ {:>12.0} /s ║", 
-        "Throughput", high_results.throughput, low_results.throughput, rwlock_results.throughput);
-    println!("║ {:^18} │ {:>15} │ {:>15} │ {:>15} ║", 
-        "Contentions", high_results.contention_count, low_results.contention_count, rwlock_results.contention_count);
-    println!("╚═══════════════════════════════════════════════════════════════════════════════╝");
-    
-    let speedup = high_results.avg_latency_us / low_results.avg_latency_us;
-    println!("\n--- Analysis ---");
-    println!("  • Atomics are {:.1}x faster than Mutex under contention", speedup);
-    println!("  • High contention caused {} blocking events", high_results.contention_count);
-    println!("  • Max latency under contention: {:.3} µs (unpredictable!)", high_results.max_latency_us);
-    println!("\n--- Impact on Real-Time Systems ---");
-    println!("  • High contention causes UNPREDICTABLE latency spikes");
-    println!("  • Use Atomics for status flags and counters");
-    println!("  • Use RwLock for config (read often, write rarely)");
-}
-
-fn run_high_contention_test(iterations: usize, num_threads: usize) -> ContentionResults {
-    use parking_lot::Mutex;
-    
-    let shared_data = Arc::new(Mutex::new(0u64));
-    let shared_latencies = Arc::new(Mutex::new(Vec::with_capacity(iterations * num_threads)));
-    let contention_counter = Arc::new(AtomicU64::new(0));
-    
-    let start = Instant::now();
-    
-    let handles: Vec<_> = (0..num_threads)
-        .map(|_| {
-            let data = Arc::clone(&shared_data);
-            let latencies = Arc::clone(&shared_latencies);
-            let contentions = Arc::clone(&contention_counter);
-            
-            thread::spawn(move || {
-                for _ in 0..iterations {
-                    let op_start = Instant::now();
-                    {
-                        let mut guard = data.lock();
-                        *guard += 1;
-                        std::hint::black_box(*guard);
-                    }
-                    let elapsed = op_start.elapsed().as_nanos() as u64;
-                    
-                    if elapsed > 1000 {
-                        contentions.fetch_add(1, Ordering::Relaxed);
-                    }
-                    latencies.lock().push(elapsed);
-                }
-            })
-        })
-        .collect();
-    
-    for h in handles { h.join().unwrap(); }
-    
-    let total_time = start.elapsed();
-    let latencies = shared_latencies.lock().clone();
-    calculate_contention_results(&latencies, total_time, contention_counter.load(Ordering::Relaxed) as usize)
-}
-
-fn run_low_contention_atomic_test(iterations: usize, num_threads: usize) -> ContentionResults {
-    use parking_lot::Mutex;
-    
-    let shared_data = Arc::new(AtomicU64::new(0));
-    let shared_latencies = Arc::new(Mutex::new(Vec::with_capacity(iterations * num_threads)));
-    
-    let start = Instant::now();
-    
-    let handles: Vec<_> = (0..num_threads)
-        .map(|_| {
-            let data = Arc::clone(&shared_data);
-            let latencies = Arc::clone(&shared_latencies);
-            
-            thread::spawn(move || {
-                for _ in 0..iterations {
-                    let op_start = Instant::now();
-                    let val = data.fetch_add(1, Ordering::SeqCst);
-                    std::hint::black_box(val);
-                    latencies.lock().push(op_start.elapsed().as_nanos() as u64);
-                }
-            })
-        })
-        .collect();
-    
-    for h in handles { h.join().unwrap(); }
-    
-    let total_time = start.elapsed();
-    let latencies = shared_latencies.lock().clone();
-    calculate_contention_results(&latencies, total_time, 0)
-}
-
-fn run_rwlock_contention_test(iterations: usize, num_threads: usize) -> ContentionResults {
-    use parking_lot::{RwLock, Mutex};
-    
-    let shared_data = Arc::new(RwLock::new(0u64));
-    let shared_latencies = Arc::new(Mutex::new(Vec::with_capacity(iterations * num_threads)));
-    let contention_counter = Arc::new(AtomicU64::new(0));
-    
-    let start = Instant::now();
-    
-    let handles: Vec<_> = (0..num_threads)
-        .map(|thread_id| {
-            let data = Arc::clone(&shared_data);
-            let latencies = Arc::clone(&shared_latencies);
-            let contentions = Arc::clone(&contention_counter);
-            
-            thread::spawn(move || {
-                for i in 0..iterations {
-                    let op_start = Instant::now();
-                    
-                    if (i + thread_id) % 10 == 0 {
-                        let mut guard = data.write();
-                        *guard += 1;
-                        std::hint::black_box(*guard);
-                    } else {
-                        let guard = data.read();
-                        std::hint::black_box(*guard);
-                    }
-                    
-                    let elapsed = op_start.elapsed().as_nanos() as u64;
-                    if elapsed > 1000 {
-                        contentions.fetch_add(1, Ordering::Relaxed);
-                    }
-                    latencies.lock().push(elapsed);
-                }
-            })
-        })
-        .collect();
-    
-    for h in handles { h.join().unwrap(); }
-    
-    let total_time = start.elapsed();
-    let latencies = shared_latencies.lock().clone();
-    calculate_contention_results(&latencies, total_time, contention_counter.load(Ordering::Relaxed) as usize)
-}
-
-fn calculate_contention_results(latencies: &[u64], total_time: Duration, contentions: usize) -> ContentionResults {
-    let mut sorted = latencies.to_vec();
-    sorted.sort_unstable();
-    
-    let count = sorted.len();
-    let sum: u64 = sorted.iter().sum();
-    let p99_idx = (count as f64 * 0.99) as usize;
-    
-    ContentionResults {
-        avg_latency_us: (sum as f64 / count as f64) / 1000.0,
-        max_latency_us: sorted[count - 1] as f64 / 1000.0,
-        p99_latency_us: sorted[p99_idx.min(count - 1)] as f64 / 1000.0,
-        throughput: count as f64 / total_time.as_secs_f64(),
-        contention_count: contentions,
-    }
-}
-
-// ============================================================================
-// COMPARISON 3: SYNCHRONIZATION PRIMITIVES
+// COMPARISON 2: SYNCHRONIZATION PRIMITIVES
 // ============================================================================
 
 fn run_sync_primitives_comparison() {
@@ -1059,6 +719,37 @@ fn save_benchmark_results() {
         let _ = rx.recv();
         benchmark.actuator_reception.stop();
     }
+
+    let shared = SharedResources::new();
+    let ipc = IpcManager::new();
+    let running = Arc::new(AtomicBool::new(true));
+
+    let mut sensor = SensorModule::new(
+        ipc.get_sensor_sender(),
+        ipc.get_feedback_receiver(),
+        shared.clone(),
+        Arc::clone(&running),
+    );
+
+    let mut actuator = ActuatorModule::new(
+        ipc.get_sensor_receiver(),
+        ipc.get_feedback_sender(),
+        shared,
+        running,
+    );
+
+    let end_to_end_iterations = 200;
+    let start = Instant::now();
+    for _ in 0..end_to_end_iterations {
+        benchmark.end_to_end.start();
+        let _ = sensor.run_cycle();
+        let _ = actuator.run_cycle();
+        benchmark.end_to_end.stop();
+    }
+    let elapsed = start.elapsed();
+    if elapsed.as_secs_f64() > 0.0 {
+        benchmark.record_throughput(end_to_end_iterations as f64 / elapsed.as_secs_f64());
+    }
     
     let json = benchmark.export_json();
     match File::create("benchmark_results.json") {
@@ -1077,27 +768,127 @@ fn save_benchmark_results() {
 
 fn save_timing_log(benchmark: &SystemBenchmark) {
     let mut log = String::new();
-    
+
     log.push_str("============================================================\n");
     log.push_str("  RTS Manufacturing System - Timing Log\n");
     log.push_str("============================================================\n");
     log.push_str(&format!("Generated at: {:?}\n\n", std::time::SystemTime::now()));
-    
-    let stats = benchmark.sensor_generation.get_stats();
-    log.push_str("=== Sensor Generation ===\n");
-    log.push_str(&format!("  Iterations: {}\n", stats.count));
-    log.push_str(&format!("  Min: {:.3} µs, Max: {:.3} µs, Mean: {:.3} µs\n\n", 
-        stats.min_ns as f64 / 1000.0, stats.max_ns as f64 / 1000.0, stats.mean_ns / 1000.0));
-    
-    let stats = benchmark.data_processing.get_stats();
-    log.push_str("=== Data Processing ===\n");
-    log.push_str(&format!("  Iterations: {}\n", stats.count));
-    log.push_str(&format!("  Min: {:.3} µs, Max: {:.3} µs, Mean: {:.3} µs\n", 
-        stats.min_ns as f64 / 1000.0, stats.max_ns as f64 / 1000.0, stats.mean_ns / 1000.0));
-    log.push_str(&format!("  Deadline: {:.1} µs\n\n", PROCESSING_DEADLINE.as_nanos() as f64 / 1000.0));
-    
+
+    fn append_timer(log: &mut String, name: &str, stats: &BenchmarkStats) {
+        log.push_str(&format!("=== {} ===\n", name));
+        log.push_str(&format!("  Iterations: {}\n", stats.count));
+        log.push_str(&format!("  Min: {:.3} us\n", stats.min_ns as f64 / 1000.0));
+        log.push_str(&format!("  Max: {:.3} us\n", stats.max_ns as f64 / 1000.0));
+        log.push_str(&format!("  Mean: {:.3} us\n", stats.mean_ns / 1000.0));
+        log.push_str(&format!("  Std Dev: {:.3} us\n", stats.std_dev_ns / 1000.0));
+        log.push_str(&format!("  P50: {:.3} us\n", stats.p50_ns as f64 / 1000.0));
+        log.push_str(&format!("  P95: {:.3} us\n", stats.p95_ns as f64 / 1000.0));
+        log.push_str(&format!("  P99: {:.3} us\n", stats.p99_ns as f64 / 1000.0));
+        log.push_str(&format!("  Jitter: {:.3} us\n\n", stats.jitter_ns as f64 / 1000.0));
+    }
+
+    fn append_deadline(
+        log: &mut String,
+        name: &str,
+        durations: &[u64],
+        deadline_ns: u64,
+    ) {
+        let count = durations.len();
+        let violations = durations.iter().filter(|&&d| d > deadline_ns).count();
+        let percent = if count > 0 {
+            violations as f64 / count as f64 * 100.0
+        } else {
+            0.0
+        };
+
+        log.push_str(&format!(
+            "  {} Deadline ({:.1} us):\n",
+            name,
+            deadline_ns as f64 / 1000.0
+        ));
+        log.push_str(&format!(
+            "    Violations: {} / {} ({:.2}%)\n",
+            violations,
+            count,
+            percent
+        ));
+    }
+
+    append_timer(
+        &mut log,
+        "Sensor Generation",
+        &benchmark.sensor_generation.get_stats(),
+    );
+    append_timer(
+        &mut log,
+        "Data Processing",
+        &benchmark.data_processing.get_stats(),
+    );
+    append_timer(
+        &mut log,
+        "Data Transmission",
+        &benchmark.data_transmission.get_stats(),
+    );
+    append_timer(
+        &mut log,
+        "Actuator Reception",
+        &benchmark.actuator_reception.get_stats(),
+    );
+    append_timer(
+        &mut log,
+        "PID Control",
+        &benchmark.pid_control.get_stats(),
+    );
+    append_timer(
+        &mut log,
+        "Feedback Transmission",
+        &benchmark.feedback_transmission.get_stats(),
+    );
+    append_timer(
+        &mut log,
+        "End-to-End Latency",
+        &benchmark.end_to_end.get_stats(),
+    );
+    append_timer(
+        &mut log,
+        "Lock Contention",
+        &benchmark.lock_contention.get_stats(),
+    );
+
+    let (min_tp, max_tp, avg_tp) = benchmark.get_throughput_stats();
+    log.push_str("=== Throughput Summary ===\n");
+    log.push_str(&format!("  Min: {:.2} ops/sec\n", min_tp));
+    log.push_str(&format!("  Max: {:.2} ops/sec\n", max_tp));
+    log.push_str(&format!("  Avg: {:.2} ops/sec\n\n", avg_tp));
+
+    log.push_str("=== Deadline Analysis ===\n");
+    append_deadline(
+        &mut log,
+        "Processing",
+        benchmark.data_processing.get_durations(),
+        PROCESSING_DEADLINE.as_nanos() as u64,
+    );
+    append_deadline(
+        &mut log,
+        "Transmission",
+        benchmark.data_transmission.get_durations(),
+        TRANSMISSION_DEADLINE.as_nanos() as u64,
+    );
+    append_deadline(
+        &mut log,
+        "Actuator Control",
+        benchmark.pid_control.get_durations(),
+        ACTUATOR_DEADLINE.as_nanos() as u64,
+    );
+    append_deadline(
+        &mut log,
+        "Feedback",
+        benchmark.feedback_transmission.get_durations(),
+        FEEDBACK_DEADLINE.as_nanos() as u64,
+    );
+
     log.push_str("============================================================\n");
-    
+
     match File::create("timing_log.txt") {
         Ok(mut file) => {
             if let Err(e) = write!(file, "{}", log) {

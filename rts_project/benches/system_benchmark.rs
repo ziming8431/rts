@@ -9,8 +9,9 @@
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use std::hint::black_box;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Instant;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::thread;
+use std::time::{Duration, Instant};
 
 // Import ACTUAL V2 modules (same as main.rs)
 use rts_manufacturing::sensor::{SensorModule, SensorSimulator, DataProcessor};
@@ -132,6 +133,77 @@ fn bench_complete_system_cycle(c: &mut Criterion) {
             let result = actuator_module.run_cycle();
 
             black_box(result)
+        })
+    });
+
+    group.finish();
+}
+
+/// Benchmark complete multi-threaded system (sensor + actuator threads)
+fn bench_multithreaded_system_end_to_end(c: &mut Criterion) {
+    let mut group = c.benchmark_group("v2_actual_system");
+    group.sample_size(20);
+    group.measurement_time(Duration::from_secs(3));
+    group.throughput(Throughput::Elements(1));
+
+    group.bench_function("multi_threaded_end_to_end", |b| {
+        b.iter_custom(|iters| {
+            let cycles = iters as usize;
+            let shared = SharedResources::new();
+            let ipc = IpcManager::new();
+            let running = Arc::new(AtomicBool::new(true));
+
+            let sensor_sender = ipc.get_sensor_sender();
+            let feedback_receiver = ipc.get_feedback_receiver();
+            let sensor_shared = shared.clone();
+            let sensor_running = Arc::clone(&running);
+
+            let sensor_receiver = ipc.get_sensor_receiver();
+            let feedback_sender = ipc.get_feedback_sender();
+            let actuator_shared = shared.clone();
+            let actuator_running = Arc::clone(&running);
+
+            let start = Instant::now();
+
+            let sensor_handle = thread::spawn(move || {
+                let mut sensor = SensorModule::new(
+                    sensor_sender,
+                    feedback_receiver,
+                    sensor_shared,
+                    sensor_running,
+                );
+
+                for _ in 0..cycles {
+                    let _ = sensor.run_cycle();
+                    thread::sleep(Duration::from_millis(1));
+                }
+
+                sensor.get_stats()
+            });
+
+            let actuator_handle = thread::spawn(move || {
+                let mut actuator = ActuatorModule::new(
+                    sensor_receiver,
+                    feedback_sender,
+                    actuator_shared,
+                    actuator_running,
+                );
+
+                for _ in 0..cycles {
+                    let _ = actuator.run_cycle();
+                    thread::sleep(Duration::from_micros(500));
+                }
+
+                actuator.get_stats()
+            });
+
+            let sensor_stats = sensor_handle.join().expect("Sensor thread panicked");
+            let actuator_stats = actuator_handle.join().expect("Actuator thread panicked");
+
+            black_box(sensor_stats);
+            black_box(actuator_stats);
+
+            start.elapsed()
         })
     });
 
@@ -312,29 +384,28 @@ fn bench_sync_primitives(c: &mut Criterion) {
 }
 
 // ============================================================================
-// LOCK CONTENTION BENCHMARKS
+// SHARED RESOURCE CONTENTION BENCHMARKS
 // ============================================================================
 
-fn bench_lock_contention(c: &mut Criterion) {
-    let mut group = c.benchmark_group("v2_lock_contention");
-    group.throughput(Throughput::Elements(10000));
+fn bench_shared_resource_contention(c: &mut Criterion) {
+    const THREADS: usize = 4;
+    const OPS_PER_THREAD: usize = 200;
 
-    // V2 uses parking_lot::Mutex
-    group.bench_function("parking_lot_mutex_4threads", |b| {
-        use std::thread;
+    let mut group = c.benchmark_group("v2_shared_resource_contention");
+    group.sample_size(20);
+    group.measurement_time(Duration::from_secs(3));
+
+    group.throughput(Throughput::Elements((THREADS * OPS_PER_THREAD) as u64));
+    group.bench_function("diagnostic_log_contended", |b| {
+        let log = Arc::new(DiagnosticLog::new(1000));
 
         b.iter(|| {
-            let counter = Arc::new(parking_lot::Mutex::new(0u64));
-            let iterations_per_thread = 2500;
-
-            let handles: Vec<_> = (0..4)
+            let handles: Vec<_> = (0..THREADS)
                 .map(|_| {
-                    let counter = Arc::clone(&counter);
+                    let log = Arc::clone(&log);
                     thread::spawn(move || {
-                        for _ in 0..iterations_per_thread {
-                            let mut guard = counter.lock();
-                            *guard += 1;
-                            black_box(*guard);
+                        for _ in 0..OPS_PER_THREAD {
+                            log.log(LogLevel::Info, "Bench", "Contention");
                         }
                     })
                 })
@@ -344,37 +415,128 @@ fn bench_lock_contention(c: &mut Criterion) {
                 h.join().unwrap();
             }
 
-            let result = *counter.lock();
-            black_box(result)
+            black_box(log.get_stats());
         })
     });
 
-    // V2 uses AtomicU64 for counters (lock-free)
-    group.bench_function("atomic_u64_4threads", |b| {
-        use std::thread;
-        use std::sync::atomic::AtomicU64;
+    const READERS: usize = 3;
+    const WRITERS: usize = 1;
+    group.throughput(Throughput::Elements(((READERS + WRITERS) * OPS_PER_THREAD) as u64));
+    group.bench_function("config_buffer_read_write", |b| {
+        let config = Arc::new(ConfigBuffer::new());
 
         b.iter(|| {
-            let counter = Arc::new(AtomicU64::new(0));
-            let iterations_per_thread = 2500;
+            let mut handles = Vec::with_capacity(READERS + WRITERS);
 
-            let handles: Vec<_> = (0..4)
-                .map(|_| {
-                    let counter = Arc::clone(&counter);
-                    thread::spawn(move || {
-                        for _ in 0..iterations_per_thread {
-                            let val = counter.fetch_add(1, Ordering::SeqCst);
-                            black_box(val);
-                        }
-                    })
-                })
-                .collect();
+            for _ in 0..READERS {
+                let config = Arc::clone(&config);
+                handles.push(thread::spawn(move || {
+                    for _ in 0..OPS_PER_THREAD {
+                        black_box(config.read());
+                    }
+                }));
+            }
+
+            for _ in 0..WRITERS {
+                let config = Arc::clone(&config);
+                handles.push(thread::spawn(move || {
+                    for _ in 0..OPS_PER_THREAD {
+                        config.update(|cfg| {
+                            cfg.anomaly_threshold += 0.001;
+                            if cfg.anomaly_threshold > ANOMALY_THRESHOLD * 2.0 {
+                                cfg.anomaly_threshold = ANOMALY_THRESHOLD;
+                            }
+                        });
+                    }
+                }));
+            }
 
             for h in handles {
                 h.join().unwrap();
             }
 
-            black_box(counter.load(Ordering::SeqCst))
+            black_box(config.get_stats());
+        })
+    });
+
+    group.finish();
+}
+
+// ============================================================================
+// PRIORITY INVERSION SIMULATION BENCHMARKS
+// ============================================================================
+
+fn bench_priority_inversion_simulated(c: &mut Criterion) {
+    const HOLD_TIME_US: u64 = 500;
+
+    let mut group = c.benchmark_group("v2_priority_inversion");
+    group.sample_size(20);
+    group.measurement_time(Duration::from_secs(3));
+    group.throughput(Throughput::Elements(1));
+
+    group.bench_function("config_buffer_priority_inversion", |b| {
+        b.iter_custom(|iters| {
+            let mut total_wait_ns: u128 = 0;
+
+            for _ in 0..iters {
+                let config = Arc::new(ConfigBuffer::new());
+                let low_locked = Arc::new(AtomicBool::new(false));
+                let high_done = Arc::new(AtomicBool::new(false));
+                let wait_ns = Arc::new(AtomicU64::new(0));
+
+                let low_config = Arc::clone(&config);
+                let low_locked_flag = Arc::clone(&low_locked);
+                let low = thread::spawn(move || {
+                    low_config.update(|cfg| {
+                        low_locked_flag.store(true, Ordering::Release);
+                        thread::sleep(Duration::from_micros(HOLD_TIME_US));
+                        cfg.mode = SystemMode::Degraded;
+                    });
+                });
+
+                let high_config = Arc::clone(&config);
+                let low_locked_flag = Arc::clone(&low_locked);
+                let high_done_flag = Arc::clone(&high_done);
+                let wait_ns_flag = Arc::clone(&wait_ns);
+                let high = thread::spawn(move || {
+                    while !low_locked_flag.load(Ordering::Acquire) {
+                        std::hint::spin_loop();
+                    }
+                    let start = Instant::now();
+                    let value = high_config.read();
+                    black_box(value);
+                    let elapsed = start.elapsed().as_nanos() as u64;
+                    wait_ns_flag.store(elapsed, Ordering::Release);
+                    high_done_flag.store(true, Ordering::Release);
+                });
+
+                let low_locked_flag = Arc::clone(&low_locked);
+                let high_done_flag = Arc::clone(&high_done);
+                let medium = thread::spawn(move || {
+                    while !low_locked_flag.load(Ordering::Acquire) {
+                        std::hint::spin_loop();
+                    }
+                    let mut burn: u64 = 0;
+                    while !high_done_flag.load(Ordering::Acquire) {
+                        burn = burn.wrapping_add(1);
+                        black_box(burn);
+                    }
+                });
+
+                let _ = low.join();
+                let _ = high.join();
+                let _ = medium.join();
+
+                total_wait_ns += wait_ns.load(Ordering::Acquire) as u128;
+            }
+
+            let capped = if total_wait_ns > u128::from(u64::MAX) {
+                u64::MAX
+            } else {
+                total_wait_ns as u64
+            };
+
+            Duration::from_nanos(capped)
         })
     });
 
@@ -520,85 +682,6 @@ fn bench_cpu_load_impact(c: &mut Criterion) {
 }
 
 // ============================================================================
-// ASYNC vs THREADED (Optional - Advanced 80%+)
-// ============================================================================
-
-fn bench_async_vs_threaded(c: &mut Criterion) {
-    let mut group = c.benchmark_group("async_vs_threaded");
-    group.throughput(Throughput::Elements(1000));
-
-    // Multi-threaded (what V2 uses in main.rs)
-    group.bench_function("threaded_std_thread", |b| {
-        use std::thread;
-
-        b.iter(|| {
-            let (tx, rx) = crossbeam_channel::bounded::<f64>(100);
-            let iterations = 1000u64;
-
-            let sensor_handle = thread::spawn(move || {
-                // Simple work without non-Send types
-                for i in 0..iterations {
-                    let value = 50.0 + (i as f64 * 0.1).sin() * 5.0;
-                    let _ = tx.send(value);
-                }
-            });
-
-            let actuator_handle = thread::spawn(move || {
-                let mut pid = PidController::with_defaults("Test");
-                pid.set_setpoint(50.0);
-                let mut sum = 0.0;
-                for _ in 0..iterations {
-                    if let Ok(val) = rx.recv() {
-                        let (output, _, _) = pid.update(val);
-                        sum += output;
-                    }
-                }
-                sum
-            });
-
-            sensor_handle.join().unwrap();
-            black_box(actuator_handle.join().unwrap())
-        })
-    });
-
-    // Async implementation
-    group.bench_function("async_tokio", |b| {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-
-        b.iter(|| {
-            rt.block_on(async {
-                let (tx, mut rx) = tokio::sync::mpsc::channel::<f64>(100);
-                let iterations = 1000u64;
-
-                let sensor_task = tokio::spawn(async move {
-                    // Simple work without non-Send types
-                    for i in 0..iterations {
-                        let value = 50.0 + (i as f64 * 0.1).sin() * 5.0;
-                        let _ = tx.send(value).await;
-                    }
-                });
-
-                let actuator_task = tokio::spawn(async move {
-                    let mut pid = PidController::with_defaults("Test");
-                    pid.set_setpoint(50.0);
-                    let mut sum = 0.0;
-                    while let Some(val) = rx.recv().await {
-                        let (output, _, _) = pid.update(val);
-                        sum += output;
-                    }
-                    sum
-                });
-
-                let _ = sensor_task.await;
-                black_box(actuator_task.await.unwrap())
-            })
-        })
-    });
-
-    group.finish();
-}
-
-// ============================================================================
 // CRITERION GROUPS
 // ============================================================================
 
@@ -607,7 +690,8 @@ criterion_group!(
     actual_system_benches,
     bench_sensor_module_run_cycle,
     bench_actuator_module_run_cycle,
-    bench_complete_system_cycle
+    bench_complete_system_cycle,
+    bench_multithreaded_system_end_to_end
 );
 
 // Component timing benchmarks
@@ -623,8 +707,19 @@ criterion_group!(
 // Sync comparison benchmarks
 criterion_group!(
     sync_benches,
-    bench_sync_primitives,
-    bench_lock_contention
+    bench_sync_primitives
+);
+
+// Shared resource contention benchmarks
+criterion_group!(
+    shared_resource_contention_benches,
+    bench_shared_resource_contention
+);
+
+// Priority inversion simulation benchmarks
+criterion_group!(
+    priority_inversion_benches,
+    bench_priority_inversion_simulated
 );
 
 // Load impact benchmarks
@@ -633,16 +728,11 @@ criterion_group!(
     bench_cpu_load_impact
 );
 
-// Optional async comparison
-criterion_group!(
-    optional_benches,
-    bench_async_vs_threaded
-);
-
 criterion_main!(
     actual_system_benches,
     component_benches,
     sync_benches,
-    load_benches,
-    optional_benches
+    shared_resource_contention_benches,
+    priority_inversion_benches,
+    load_benches
 );

@@ -11,9 +11,6 @@ crossbeam = "0.8.4"
 crossbeam-channel = "0.5.15"
 parking_lot = "0.12.5"
 
-# Async Runtime
-tokio = { version = "1.35", features = ["full", "rt-multi-thread", "sync", "time", "macros"] }
-
 # Time and Timing
 chrono = "0.4"
 
