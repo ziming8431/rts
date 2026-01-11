@@ -218,8 +218,6 @@ impl StatusMemory {
     pub fn get_mode(&self) -> SystemMode {
         match self.mode.load(Ordering::Acquire) {
             0 => SystemMode::Normal,
-            1 => SystemMode::Degraded,
-            2 => SystemMode::FailSafe,
             _ => SystemMode::Shutdown,
         }
     }

@@ -7,7 +7,7 @@
 // - Multi-threaded sensor-actuator integration
 // - PID control with predictive algorithms
 // - Shared resource synchronization (mutex, RwLock, atomics)
-// - Fault injection and fail-safe mechanisms
+// - Fault injection mechanisms
 // - Comprehensive performance benchmarking
 // - COMPARISON BENCHMARKS for assignment requirements
 // ============================================================================
@@ -15,14 +15,12 @@
 use rts_manufacturing::actuator::*;
 use rts_manufacturing::benchmark::*;
 use rts_manufacturing::config::*;
-use rts_manufacturing::failsafe::*;
 use rts_manufacturing::fault_injection::*;
 use rts_manufacturing::ipc::*;
 use rts_manufacturing::sensor::*;
 use rts_manufacturing::shared_resource::*;
-use rts_manufacturing::types::*;
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -49,31 +47,19 @@ fn run_demonstration() {
 
     // 1. Run basic multi-threaded integration
     println!("=== Part 1: Multi-Threaded Integration ===");
-    run_multithreaded_system(500);
+    run_multithreaded_system(DEMO_INTEGRATION_CYCLES);
 
     // 2. Run with fault injection enabled
     println!("\n=== Part 2: Fault Injection Testing ===");
-    run_with_fault_injection(300);
+    run_with_fault_injection(DEMO_FAULT_INJECTION_CYCLES);
 
     // 3. Run under CPU load simulation (COMPARISON: Different Load Levels)
     println!("\n=== Part 3: CPU Load Comparison ===");
-    run_under_load(200);
+    run_under_load(DEMO_LOAD_CYCLES);
 
     // 4. Run detailed benchmarks
     println!("\n=== Part 4: Performance Benchmarking ===");
     run_benchmarks();
-
-    // =========================================================================
-    // COMPARISON BENCHMARKS (Required for Assignment)
-    // =========================================================================
-    
-    // 6. Synchronization Primitives Comparison
-    println!("\n=== Part 6: Synchronization Primitives Comparison ===");
-    run_sync_primitives_comparison();
-    
-    // 7. Channel Types Comparison
-    println!("\n=== Part 7: Channel Types Comparison ===");
-    run_channel_comparison();
 
     // 9. Save all benchmark results to files
     println!("\n=== Part 9: Saving Results to Files ===");
@@ -170,8 +156,6 @@ fn run_multithreaded_system(num_cycles: usize) {
     println!("  Avg Control Time:      {:.3} µs", actuator_stats.control.avg_latency_ns / 1000.0);
     println!("  Avg Feedback Time:     {:.3} µs", actuator_stats.feedback.avg_latency_ns / 1000.0);
     println!("  Missed Deadlines:      {}", actuator_stats.missed_deadlines);
-    println!("  Fail-Safe State:       {:?}", actuator_stats.failsafe_state);
-
     shared.print_sync_stats();
 }
 
@@ -230,9 +214,9 @@ fn run_with_fault_injection(num_cycles: usize) {
     fault_injector.print_stats();
     println!("\nFault Detection:");
     println!("  Faults Injected: {}", faults_injected);
-    println!("  Faults Detected: {}", fault_detector.get_fault_count());
+    println!("  Faults Flagged: {}", faults_detected);
+    println!("  Faults Detected (seq/time): {}", fault_detector.get_fault_count());
     
-    actuator.get_failsafe().print_status();
 }
 
 // ----------------------------------------------------------------------------
@@ -424,257 +408,6 @@ fn run_benchmarks() {
     benchmark.print_report();
 }
 
-
-// ============================================================================
-// COMPARISON 2: SYNCHRONIZATION PRIMITIVES
-// ============================================================================
-
-fn run_sync_primitives_comparison() {
-    println!("Comparing synchronization primitives (single-threaded baseline)...\n");
-    
-    let iterations = 50000;
-    
-    println!("Running std::sync::Mutex benchmark...");
-    let std_mutex = bench_std_mutex(iterations);
-    
-    println!("Running parking_lot::Mutex benchmark...");
-    let pl_mutex = bench_parking_lot_mutex(iterations);
-    
-    println!("Running AtomicU64 benchmark...");
-    let atomic = bench_atomic(iterations);
-    
-    println!("Running RwLock (read) benchmark...");
-    let rwlock_read = bench_rwlock_read(iterations);
-    
-    println!("Running RwLock (write) benchmark...");
-    let rwlock_write = bench_rwlock_write(iterations);
-    
-    println!("\n╔═══════════════════════════════════════════════════════════════════════════════════╗");
-    println!("║                    SYNCHRONIZATION PRIMITIVES COMPARISON                          ║");
-    println!("║                           ({} iterations, single-threaded)                       ║", iterations);
-    println!("╠═══════════════════════════════════════════════════════════════════════════════════╣");
-    println!("║ {:^20} │ {:^12} │ {:^12} │ {:^12} │ {:^12} ║", 
-        "Primitive", "Avg (ns)", "Min (ns)", "Max (ns)", "Throughput");
-    println!("╠═══════════════════════════════════════════════════════════════════════════════════╣");
-    println!("║ {:^20} │ {:>12.1} │ {:>12} │ {:>12} │ {:>10.0}/s ║",
-        "std::sync::Mutex", std_mutex.0, std_mutex.1, std_mutex.2, std_mutex.3);
-    println!("║ {:^20} │ {:>12.1} │ {:>12} │ {:>12} │ {:>10.0}/s ║",
-        "parking_lot::Mutex", pl_mutex.0, pl_mutex.1, pl_mutex.2, pl_mutex.3);
-    println!("║ {:^20} │ {:>12.1} │ {:>12} │ {:>12} │ {:>10.0}/s ║",
-        "AtomicU64", atomic.0, atomic.1, atomic.2, atomic.3);
-    println!("║ {:^20} │ {:>12.1} │ {:>12} │ {:>12} │ {:>10.0}/s ║",
-        "RwLock (read)", rwlock_read.0, rwlock_read.1, rwlock_read.2, rwlock_read.3);
-    println!("║ {:^20} │ {:>12.1} │ {:>12} │ {:>12} │ {:>10.0}/s ║",
-        "RwLock (write)", rwlock_write.0, rwlock_write.1, rwlock_write.2, rwlock_write.3);
-    println!("╚═══════════════════════════════════════════════════════════════════════════════════╝");
-    
-    println!("\n--- Analysis ---");
-    println!("  • parking_lot::Mutex is {:.1}x faster than std::sync::Mutex", std_mutex.0 / pl_mutex.0);
-    println!("  • AtomicU64 is {:.1}x faster than parking_lot::Mutex", pl_mutex.0 / atomic.0);
-    println!("  • RwLock reads are {:.1}x faster than writes", rwlock_write.0 / rwlock_read.0);
-}
-
-fn bench_std_mutex(iterations: usize) -> (f64, u64, u64, f64) {
-    use std::sync::Mutex;
-    let data = Mutex::new(0u64);
-    let mut latencies = Vec::with_capacity(iterations);
-    let start = Instant::now();
-    
-    for _ in 0..iterations {
-        let op_start = Instant::now();
-        { let mut g = data.lock().unwrap(); *g += 1; std::hint::black_box(*g); }
-        latencies.push(op_start.elapsed().as_nanos() as u64);
-    }
-    
-    let total = start.elapsed();
-    let sum: u64 = latencies.iter().sum();
-    (sum as f64 / iterations as f64, *latencies.iter().min().unwrap(), *latencies.iter().max().unwrap(), iterations as f64 / total.as_secs_f64())
-}
-
-fn bench_parking_lot_mutex(iterations: usize) -> (f64, u64, u64, f64) {
-    use parking_lot::Mutex;
-    let data = Mutex::new(0u64);
-    let mut latencies = Vec::with_capacity(iterations);
-    let start = Instant::now();
-    
-    for _ in 0..iterations {
-        let op_start = Instant::now();
-        { let mut g = data.lock(); *g += 1; std::hint::black_box(*g); }
-        latencies.push(op_start.elapsed().as_nanos() as u64);
-    }
-    
-    let total = start.elapsed();
-    let sum: u64 = latencies.iter().sum();
-    (sum as f64 / iterations as f64, *latencies.iter().min().unwrap(), *latencies.iter().max().unwrap(), iterations as f64 / total.as_secs_f64())
-}
-
-fn bench_atomic(iterations: usize) -> (f64, u64, u64, f64) {
-    let data = AtomicU64::new(0);
-    let mut latencies = Vec::with_capacity(iterations);
-    let start = Instant::now();
-    
-    for _ in 0..iterations {
-        let op_start = Instant::now();
-        let val = data.fetch_add(1, Ordering::SeqCst);
-        std::hint::black_box(val);
-        latencies.push(op_start.elapsed().as_nanos() as u64);
-    }
-    
-    let total = start.elapsed();
-    let sum: u64 = latencies.iter().sum();
-    (sum as f64 / iterations as f64, *latencies.iter().min().unwrap(), *latencies.iter().max().unwrap(), iterations as f64 / total.as_secs_f64())
-}
-
-fn bench_rwlock_read(iterations: usize) -> (f64, u64, u64, f64) {
-    use parking_lot::RwLock;
-    let data = RwLock::new(0u64);
-    let mut latencies = Vec::with_capacity(iterations);
-    let start = Instant::now();
-    
-    for _ in 0..iterations {
-        let op_start = Instant::now();
-        { let g = data.read(); std::hint::black_box(*g); }
-        latencies.push(op_start.elapsed().as_nanos() as u64);
-    }
-    
-    let total = start.elapsed();
-    let sum: u64 = latencies.iter().sum();
-    (sum as f64 / iterations as f64, *latencies.iter().min().unwrap(), *latencies.iter().max().unwrap(), iterations as f64 / total.as_secs_f64())
-}
-
-fn bench_rwlock_write(iterations: usize) -> (f64, u64, u64, f64) {
-    use parking_lot::RwLock;
-    let data = RwLock::new(0u64);
-    let mut latencies = Vec::with_capacity(iterations);
-    let start = Instant::now();
-    
-    for _ in 0..iterations {
-        let op_start = Instant::now();
-        { let mut g = data.write(); *g += 1; std::hint::black_box(*g); }
-        latencies.push(op_start.elapsed().as_nanos() as u64);
-    }
-    
-    let total = start.elapsed();
-    let sum: u64 = latencies.iter().sum();
-    (sum as f64 / iterations as f64, *latencies.iter().min().unwrap(), *latencies.iter().max().unwrap(), iterations as f64 / total.as_secs_f64())
-}
-
-// ============================================================================
-// COMPARISON 4: CHANNEL TYPES
-// ============================================================================
-
-fn run_channel_comparison() {
-    println!("Comparing channel implementations...\n");
-    
-    let iterations = 50000;
-    
-    println!("Running std::sync::mpsc (bounded) benchmark...");
-    let std_bounded = bench_std_channel_bounded(iterations);
-    
-    println!("Running std::sync::mpsc (unbounded) benchmark...");
-    let std_unbounded = bench_std_channel_unbounded(iterations);
-    
-    println!("Running crossbeam (bounded) benchmark...");
-    let cb_bounded = bench_crossbeam_bounded(iterations);
-    
-    println!("Running crossbeam (unbounded) benchmark...");
-    let cb_unbounded = bench_crossbeam_unbounded(iterations);
-    
-    println!("\n╔═══════════════════════════════════════════════════════════════════════════════════╗");
-    println!("║                         CHANNEL TYPES COMPARISON                                  ║");
-    println!("║                           ({} send+recv operations)                              ║", iterations);
-    println!("╠═══════════════════════════════════════════════════════════════════════════════════╣");
-    println!("║ {:^25} │ {:^12} │ {:^12} │ {:^12} │ {:^12} ║", 
-        "Channel Type", "Avg (ns)", "Min (ns)", "Max (ns)", "Throughput");
-    println!("╠═══════════════════════════════════════════════════════════════════════════════════╣");
-    println!("║ {:^25} │ {:>12.1} │ {:>12} │ {:>12} │ {:>10.0}/s ║",
-        "std::mpsc (bounded)", std_bounded.0, std_bounded.1, std_bounded.2, std_bounded.3);
-    println!("║ {:^25} │ {:>12.1} │ {:>12} │ {:>12} │ {:>10.0}/s ║",
-        "std::mpsc (unbounded)", std_unbounded.0, std_unbounded.1, std_unbounded.2, std_unbounded.3);
-    println!("║ {:^25} │ {:>12.1} │ {:>12} │ {:>12} │ {:>10.0}/s ║",
-        "crossbeam (bounded)", cb_bounded.0, cb_bounded.1, cb_bounded.2, cb_bounded.3);
-    println!("║ {:^25} │ {:>12.1} │ {:>12} │ {:>12} │ {:>10.0}/s ║",
-        "crossbeam (unbounded)", cb_unbounded.0, cb_unbounded.1, cb_unbounded.2, cb_unbounded.3);
-    println!("╚═══════════════════════════════════════════════════════════════════════════════════╝");
-    
-    println!("\n--- Analysis ---");
-    println!("  • crossbeam bounded is {:.1}x faster than std bounded", std_bounded.0 / cb_bounded.0);
-    println!("  • Bounded channels have more predictable max latency (better for RT)");
-    println!("\n--- Recommendations ---");
-    println!("  • Use crossbeam::channel for best performance");
-    println!("  • Prefer BOUNDED channels to prevent unbounded memory growth");
-}
-
-fn bench_std_channel_bounded(iterations: usize) -> (f64, u64, u64, f64) {
-    use std::sync::mpsc;
-    let (tx, rx) = mpsc::sync_channel::<u64>(100);
-    let mut latencies = Vec::with_capacity(iterations);
-    let start = Instant::now();
-    
-    for i in 0..iterations {
-        let op_start = Instant::now();
-        tx.send(i as u64).unwrap();
-        let _ = rx.recv().unwrap();
-        latencies.push(op_start.elapsed().as_nanos() as u64);
-    }
-    
-    let total = start.elapsed();
-    let sum: u64 = latencies.iter().sum();
-    (sum as f64 / iterations as f64, *latencies.iter().min().unwrap(), *latencies.iter().max().unwrap(), iterations as f64 / total.as_secs_f64())
-}
-
-fn bench_std_channel_unbounded(iterations: usize) -> (f64, u64, u64, f64) {
-    use std::sync::mpsc;
-    let (tx, rx) = mpsc::channel::<u64>();
-    let mut latencies = Vec::with_capacity(iterations);
-    let start = Instant::now();
-    
-    for i in 0..iterations {
-        let op_start = Instant::now();
-        tx.send(i as u64).unwrap();
-        let _ = rx.recv().unwrap();
-        latencies.push(op_start.elapsed().as_nanos() as u64);
-    }
-    
-    let total = start.elapsed();
-    let sum: u64 = latencies.iter().sum();
-    (sum as f64 / iterations as f64, *latencies.iter().min().unwrap(), *latencies.iter().max().unwrap(), iterations as f64 / total.as_secs_f64())
-}
-
-fn bench_crossbeam_bounded(iterations: usize) -> (f64, u64, u64, f64) {
-    let (tx, rx) = crossbeam_channel::bounded::<u64>(100);
-    let mut latencies = Vec::with_capacity(iterations);
-    let start = Instant::now();
-    
-    for i in 0..iterations {
-        let op_start = Instant::now();
-        tx.send(i as u64).unwrap();
-        let _ = rx.recv().unwrap();
-        latencies.push(op_start.elapsed().as_nanos() as u64);
-    }
-    
-    let total = start.elapsed();
-    let sum: u64 = latencies.iter().sum();
-    (sum as f64 / iterations as f64, *latencies.iter().min().unwrap(), *latencies.iter().max().unwrap(), iterations as f64 / total.as_secs_f64())
-}
-
-fn bench_crossbeam_unbounded(iterations: usize) -> (f64, u64, u64, f64) {
-    let (tx, rx) = crossbeam_channel::unbounded::<u64>();
-    let mut latencies = Vec::with_capacity(iterations);
-    let start = Instant::now();
-    
-    for i in 0..iterations {
-        let op_start = Instant::now();
-        tx.send(i as u64).unwrap();
-        let _ = rx.recv().unwrap();
-        latencies.push(op_start.elapsed().as_nanos() as u64);
-    }
-    
-    let total = start.elapsed();
-    let sum: u64 = latencies.iter().sum();
-    (sum as f64 / iterations as f64, *latencies.iter().min().unwrap(), *latencies.iter().max().unwrap(), iterations as f64 / total.as_secs_f64())
-}
-
 // ----------------------------------------------------------------------------
 // Save Benchmark Results
 // ----------------------------------------------------------------------------
@@ -757,7 +490,7 @@ fn save_benchmark_results() {
             if let Err(e) = writeln!(file, "{}", json) {
                 eprintln!("Failed to write benchmark JSON: {}", e);
             } else {
-                println!("  ✓ Saved benchmark_results.json");
+                println!("  Saved benchmark_results.json");
             }
         }
         Err(e) => eprintln!("Failed to create benchmark JSON file: {}", e),
@@ -769,22 +502,38 @@ fn save_benchmark_results() {
 fn save_timing_log(benchmark: &SystemBenchmark) {
     let mut log = String::new();
 
-    log.push_str("============================================================\n");
-    log.push_str("  RTS Manufacturing System - Timing Log\n");
-    log.push_str("============================================================\n");
-    log.push_str(&format!("Generated at: {:?}\n\n", std::time::SystemTime::now()));
+    log.push_str("============================================================
+");
+    log.push_str("  RTS Manufacturing System - Timing Log
+");
+    log.push_str("============================================================
+");
+    log.push_str(&format!("Generated at: {:?}
+
+", std::time::SystemTime::now()));
 
     fn append_timer(log: &mut String, name: &str, stats: &BenchmarkStats) {
-        log.push_str(&format!("=== {} ===\n", name));
-        log.push_str(&format!("  Iterations: {}\n", stats.count));
-        log.push_str(&format!("  Min: {:.3} us\n", stats.min_ns as f64 / 1000.0));
-        log.push_str(&format!("  Max: {:.3} us\n", stats.max_ns as f64 / 1000.0));
-        log.push_str(&format!("  Mean: {:.3} us\n", stats.mean_ns / 1000.0));
-        log.push_str(&format!("  Std Dev: {:.3} us\n", stats.std_dev_ns / 1000.0));
-        log.push_str(&format!("  P50: {:.3} us\n", stats.p50_ns as f64 / 1000.0));
-        log.push_str(&format!("  P95: {:.3} us\n", stats.p95_ns as f64 / 1000.0));
-        log.push_str(&format!("  P99: {:.3} us\n", stats.p99_ns as f64 / 1000.0));
-        log.push_str(&format!("  Jitter: {:.3} us\n\n", stats.jitter_ns as f64 / 1000.0));
+        log.push_str(&format!("=== {} ===
+", name));
+        log.push_str(&format!("  Iterations: {}
+", stats.count));
+        log.push_str(&format!("  Min: {:.3} us
+", stats.min_ns as f64 / 1000.0));
+        log.push_str(&format!("  Max: {:.3} us
+", stats.max_ns as f64 / 1000.0));
+        log.push_str(&format!("  Mean: {:.3} us
+", stats.mean_ns / 1000.0));
+        log.push_str(&format!("  Std Dev: {:.3} us
+", stats.std_dev_ns / 1000.0));
+        log.push_str(&format!("  P50: {:.3} us
+", stats.p50_ns as f64 / 1000.0));
+        log.push_str(&format!("  P95: {:.3} us
+", stats.p95_ns as f64 / 1000.0));
+        log.push_str(&format!("  P99: {:.3} us
+", stats.p99_ns as f64 / 1000.0));
+        log.push_str(&format!("  Jitter: {:.3} us
+
+", stats.jitter_ns as f64 / 1000.0));
     }
 
     fn append_deadline(
@@ -802,12 +551,14 @@ fn save_timing_log(benchmark: &SystemBenchmark) {
         };
 
         log.push_str(&format!(
-            "  {} Deadline ({:.1} us):\n",
+            "  {} Deadline ({:.1} us):
+",
             name,
             deadline_ns as f64 / 1000.0
         ));
         log.push_str(&format!(
-            "    Violations: {} / {} ({:.2}%)\n",
+            "    Violations: {} / {} ({:.2}%)
+",
             violations,
             count,
             percent
@@ -856,12 +607,18 @@ fn save_timing_log(benchmark: &SystemBenchmark) {
     );
 
     let (min_tp, max_tp, avg_tp) = benchmark.get_throughput_stats();
-    log.push_str("=== Throughput Summary ===\n");
-    log.push_str(&format!("  Min: {:.2} ops/sec\n", min_tp));
-    log.push_str(&format!("  Max: {:.2} ops/sec\n", max_tp));
-    log.push_str(&format!("  Avg: {:.2} ops/sec\n\n", avg_tp));
+    log.push_str("=== Throughput Summary ===
+");
+    log.push_str(&format!("  Min: {:.2} ops/sec
+", min_tp));
+    log.push_str(&format!("  Max: {:.2} ops/sec
+", max_tp));
+    log.push_str(&format!("  Avg: {:.2} ops/sec
 
-    log.push_str("=== Deadline Analysis ===\n");
+", avg_tp));
+
+    log.push_str("=== Deadline Analysis ===
+");
     append_deadline(
         &mut log,
         "Processing",
@@ -887,14 +644,15 @@ fn save_timing_log(benchmark: &SystemBenchmark) {
         FEEDBACK_DEADLINE.as_nanos() as u64,
     );
 
-    log.push_str("============================================================\n");
+    log.push_str("============================================================
+");
 
     match File::create("timing_log.txt") {
         Ok(mut file) => {
             if let Err(e) = write!(file, "{}", log) {
                 eprintln!("Failed to write timing log: {}", e);
             } else {
-                println!("  ✓ Saved timing_log.txt");
+                println!("  Saved timing_log.txt");
             }
         }
         Err(e) => eprintln!("Failed to create timing log file: {}", e),
@@ -908,6 +666,7 @@ fn save_timing_log(benchmark: &SystemBenchmark) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rts_manufacturing::types::*;
 
     #[test]
     fn test_sensor_generation() {
@@ -935,18 +694,6 @@ mod tests {
         shared.diagnostic_log.log(LogLevel::Info, "Test", "Test message");
         let recent = shared.diagnostic_log.get_recent(1);
         assert_eq!(recent.len(), 1);
-    }
-
-    #[test]
-    fn test_failsafe_transitions() {
-        let mut failsafe = FailSafeManager::new();
-        assert!(failsafe.is_normal());
-        
-        for _ in 0..5 {
-            failsafe.report_missed_deadline();
-        }
-        
-        assert!(failsafe.is_failsafe_active() || failsafe.get_state() == FailSafeState::Warning);
     }
 
     #[test]

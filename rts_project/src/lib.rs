@@ -6,7 +6,7 @@
 // - Actuator control with PID algorithms (Component B)
 // - Shared resource synchronization
 // - Performance benchmarking
-// - Advanced features: fault injection, fail-safe mode, CPU load simulation
+// - Advanced features: fault injection, CPU load simulation
 // ============================================================================
 
 pub mod sensor;
@@ -16,6 +16,5 @@ pub mod ipc;
 pub mod pid_controller;
 pub mod benchmark;
 pub mod fault_injection;
-pub mod failsafe;
 pub mod types;
 pub mod config;

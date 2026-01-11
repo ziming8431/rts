@@ -223,9 +223,15 @@ impl SystemBenchmark {
         self.data_transmission.get_stats().print();
         self.actuator_reception.get_stats().print();
         self.pid_control.get_stats().print();
-        self.feedback_transmission.get_stats().print();
+        let feedback_stats = self.feedback_transmission.get_stats();
+        if feedback_stats.count > 0 {
+            feedback_stats.print();
+        }
         self.end_to_end.get_stats().print();
-        self.lock_contention.get_stats().print();
+        let contention_stats = self.lock_contention.get_stats();
+        if contention_stats.count > 0 {
+            contention_stats.print();
+        }
 
         let (min_tp, max_tp, avg_tp) = self.get_throughput_stats();
         println!("\n=== Throughput Statistics ===");

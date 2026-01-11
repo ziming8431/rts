@@ -490,7 +490,7 @@ fn bench_priority_inversion_simulated(c: &mut Criterion) {
                     low_config.update(|cfg| {
                         low_locked_flag.store(true, Ordering::Release);
                         thread::sleep(Duration::from_micros(HOLD_TIME_US));
-                        cfg.mode = SystemMode::Degraded;
+                        cfg.mode = SystemMode::Normal;
                     });
                 });
 

@@ -219,10 +219,6 @@ pub enum ControlCommand {
     Start,
     /// Stop the system gracefully
     Stop,
-    /// Enter fail-safe mode
-    EnterFailSafe,
-    /// Exit fail-safe mode
-    ExitFailSafe,
     /// Update configuration
     UpdateConfig(String, f64),
     /// Request status report

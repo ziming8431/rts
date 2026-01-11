@@ -49,6 +49,9 @@ pub const MOVING_AVERAGE_WINDOW: usize = 5;
 /// Anomaly detection threshold (standard deviations from mean)
 pub const ANOMALY_THRESHOLD: f64 = 3.0;
 
+/// Inject an outlier reading every N cycles (0 disables injection)
+pub const ANOMALY_INJECTION_PERIOD: usize = 50;
+
 // ----------------------------------------------------------------------------
 // Actuator Configuration
 // ----------------------------------------------------------------------------
@@ -88,6 +91,15 @@ pub const PID_OUTPUT_MAX: f64 = 100.0;
 /// Maximum number of cycles to run in simulation
 pub const MAX_SIMULATION_CYCLES: usize = 1000;
 
+/// Demo cycles for multi-threaded integration run
+pub const DEMO_INTEGRATION_CYCLES: usize = 5000;
+
+/// Demo cycles for fault injection run
+pub const DEMO_FAULT_INJECTION_CYCLES: usize = 300;
+
+/// Demo cycles for CPU load comparison run
+pub const DEMO_LOAD_CYCLES: usize = 200;
+
 /// Channel buffer size for IPC
 pub const CHANNEL_BUFFER_SIZE: usize = 100;
 
@@ -106,19 +118,6 @@ pub const FAULT_DELAY_PROBABILITY: f64 = 0.03;
 
 /// Maximum artificial delay for fault simulation
 pub const FAULT_MAX_DELAY: Duration = Duration::from_millis(10);
-
-// ----------------------------------------------------------------------------
-// Fail-Safe Configuration (Advanced Feature)
-// ----------------------------------------------------------------------------
-
-/// Number of consecutive missed deadlines before entering fail-safe mode
-pub const FAILSAFE_MISSED_DEADLINE_THRESHOLD: usize = 3;
-
-/// Number of consecutive anomalies before entering fail-safe mode
-pub const FAILSAFE_ANOMALY_THRESHOLD: usize = 5;
-
-/// Safe actuator output value in fail-safe mode
-pub const FAILSAFE_ACTUATOR_VALUE: f64 = 0.0;
 
 // ----------------------------------------------------------------------------
 // Benchmark Configuration

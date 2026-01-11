@@ -151,8 +151,6 @@ pub struct ActuatorState {
     pub target_value: f64,
     /// Error (difference between target and current)
     pub error: f64,
-    /// Is the actuator in fail-safe mode?
-    pub in_failsafe: bool,
     /// Timestamp
     pub timestamp_ns: u128,
 }
@@ -164,7 +162,6 @@ impl ActuatorState {
             current_value: 0.0,
             target_value: 0.0,
             error: 0.0,
-            in_failsafe: false,
             timestamp_ns: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -350,10 +347,6 @@ impl PerformanceStats {
 pub enum SystemMode {
     /// Normal operation
     Normal,
-    /// Degraded operation due to warnings
-    Degraded,
-    /// Fail-safe mode due to critical issues
-    FailSafe,
     /// System shutdown
     Shutdown,
 }

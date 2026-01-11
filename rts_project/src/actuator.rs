@@ -9,7 +9,6 @@
 // ============================================================================
 
 use crate::config::*;
-use crate::failsafe::*;
 use crate::ipc::*;
 use crate::pid_controller::*;
 use crate::shared_resource::*;
@@ -37,8 +36,6 @@ pub struct VirtualActuator {
     max_rate: f64,
     /// Is actuator enabled?
     enabled: bool,
-    /// Is in fail-safe mode?
-    in_failsafe: bool,
     /// Last command received
     last_command: Option<ActuatorCommand>,
     /// Execution count
@@ -63,7 +60,6 @@ impl VirtualActuator {
             target_value: 0.0,
             max_rate,
             enabled: true,
-            in_failsafe: false,
             last_command: None,
             execution_count: 0,
         }
@@ -78,10 +74,7 @@ impl VirtualActuator {
         // Simulate actuator dynamics (rate-limited movement)
         let error = self.target_value - self.current_value;
         let change = error.clamp(-self.max_rate, self.max_rate);
-        
-        if !self.in_failsafe {
-            self.current_value += change;
-        }
+        self.current_value += change;
 
         self.get_state()
     }
@@ -93,23 +86,11 @@ impl VirtualActuator {
             current_value: self.current_value,
             target_value: self.target_value,
             error: self.target_value - self.current_value,
-            in_failsafe: self.in_failsafe,
             timestamp_ns: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_nanos(),
         }
-    }
-
-    /// Enter fail-safe mode
-    pub fn enter_failsafe(&mut self) {
-        self.in_failsafe = true;
-        self.target_value = FAILSAFE_ACTUATOR_VALUE;
-    }
-
-    /// Exit fail-safe mode
-    pub fn exit_failsafe(&mut self) {
-        self.in_failsafe = false;
     }
 
     /// Enable/disable actuator
@@ -151,10 +132,6 @@ pub struct ActuatorModule {
     shared: SharedResources,
     /// Running flag
     running: Arc<AtomicBool>,
-    /// Fail-safe manager
-    failsafe: FailSafeManager,
-    /// Health monitor
-    health: HealthMonitor,
     /// Setpoints for each actuator (mapped from sensors)
     setpoints: Vec<f64>,
     /// Performance metrics
@@ -190,8 +167,6 @@ impl ActuatorModule {
             feedback_sender,
             shared,
             running,
-            failsafe: FailSafeManager::new(),
-            health: HealthMonitor::new(),
             setpoints,
             reception_times: Vec::new(),
             control_times: Vec::new(),
@@ -212,7 +187,6 @@ impl ActuatorModule {
         let sensor_data = self.receive_data()?;
         let rx_time = rx_start.elapsed().as_nanos() as u64;
         self.reception_times.push(rx_time);
-        self.health.record_latency(rx_time);
 
         // Check if we received any data
         if sensor_data.is_empty() {
@@ -231,8 +205,7 @@ impl ActuatorModule {
                 controller.set_setpoint(self.setpoints[actuator_id]);
                 let (output, error, _dt) = controller.update(data.filtered_value);
                 
-                // Apply fail-safe scaling
-                let scaled_output = output * self.failsafe.get_output_scale();
+                let scaled_output = output;
                 
                 // Create command
                 let command = ActuatorCommand::new(
@@ -253,16 +226,6 @@ impl ActuatorModule {
                 // Check actuator deadline
                 if ctrl_time > ACTUATOR_DEADLINE.as_nanos() as u64 {
                     self.missed_deadlines += 1;
-                    self.failsafe.report_missed_deadline();
-                } else {
-                    self.failsafe.report_deadline_met();
-                }
-
-                // Handle anomalies
-                if data.is_anomaly {
-                    self.failsafe.report_anomaly();
-                } else {
-                    self.failsafe.report_normal_reading();
                 }
 
                 // Phase 3: Send feedback
@@ -292,34 +255,26 @@ impl ActuatorModule {
             }
         }
 
-        // Update fail-safe recovery
-        self.failsafe.update_recovery();
-
-        // Apply fail-safe to actuators if needed
-        if self.failsafe.is_failsafe_active() {
-            for actuator in &mut self.actuators {
-                actuator.enter_failsafe();
-            }
-            self.shared.status_memory.set_mode(SystemMode::FailSafe);
-        } else {
-            for actuator in &mut self.actuators {
-                actuator.exit_failsafe();
-            }
-            if self.failsafe.is_normal() {
-                self.shared.status_memory.set_mode(SystemMode::Normal);
-            }
-        }
-
         // Update cycle counter
         self.total_cycles += 1;
+
+        if self.total_cycles % 100 == 0 {
+            let gain_value = if (self.total_cycles / 100) % 2 == 0 { 1.0 } else { 0.95 };
+            self.shared.config_buffer.update(|config| {
+                config.mode = SystemMode::Normal;
+                config.anomaly_threshold = ANOMALY_THRESHOLD;
+                for gain in &mut config.actuator_gains {
+                    *gain = gain_value;
+                }
+            });
+        }
 
         // Periodic logging
         if self.total_cycles % 100 == 0 {
             self.shared.diagnostic_log.try_log(
                 LogLevel::Info,
                 "Actuator",
-                &format!("Completed {} cycles, state: {:?}", 
-                    self.total_cycles, self.failsafe.get_state()),
+                &format!("Completed {} cycles, mode: {:?}", self.total_cycles, SystemMode::Normal),
             );
         }
 
@@ -358,9 +313,6 @@ impl ActuatorModule {
             }
         }
 
-        // Update health monitor with queue depth
-        self.health.update_queue_depth(self.data_receiver.len());
-
         Ok(data)
     }
 
@@ -385,7 +337,7 @@ impl ActuatorModule {
             // Check for emergency stop
             if self.shared.status_memory.is_emergency_stop() {
                 for actuator in &mut self.actuators {
-                    actuator.enter_failsafe();
+                    actuator.set_enabled(false);
                 }
                 break;
             }
@@ -416,16 +368,6 @@ impl ActuatorModule {
         self.actuators.iter().map(|a| a.get_state()).collect()
     }
 
-    /// Get fail-safe manager reference
-    pub fn get_failsafe(&self) -> &FailSafeManager {
-        &self.failsafe
-    }
-
-    /// Get health monitor reference
-    pub fn get_health(&self) -> &HealthMonitor {
-        &self.health
-    }
-
     /// Get performance statistics
     pub fn get_stats(&self) -> ActuatorStats {
         let total_time = self.total_cycles as f64 * SENSOR_SAMPLE_INTERVAL.as_secs_f64();
@@ -448,7 +390,6 @@ impl ActuatorModule {
             ),
             total_cycles: self.total_cycles,
             missed_deadlines: self.missed_deadlines,
-            failsafe_state: self.failsafe.get_state(),
         }
     }
 
@@ -460,10 +401,6 @@ impl ActuatorModule {
         stats.feedback.print_summary("Actuator Feedback");
         println!("\n  Total Actuator Cycles: {}", stats.total_cycles);
         println!("  Total Missed Deadlines: {}", stats.missed_deadlines);
-        println!("  Fail-Safe State: {:?}", stats.failsafe_state);
-        
-        self.failsafe.print_status();
-        self.health.print_status();
     }
 }
 
@@ -475,5 +412,4 @@ pub struct ActuatorStats {
     pub feedback: PerformanceStats,
     pub total_cycles: u64,
     pub missed_deadlines: usize,
-    pub failsafe_state: FailSafeState,
 }

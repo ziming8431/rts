@@ -32,8 +32,6 @@ pub struct SensorSimulator {
     base_value: f64,
     /// Amplitude of variation
     amplitude: f64,
-    /// Noise level
-    noise_level: f64,
     /// Current phase for sinusoidal variation
     phase: f64,
     /// Phase increment per sample
@@ -62,7 +60,6 @@ impl SensorSimulator {
             sensor_type: sensor_type.to_string(),
             base_value,
             amplitude,
-            noise_level,
             phase: 0.0,
             phase_increment: 0.05, // Controls frequency of variation
             rng: rand::thread_rng(),
@@ -243,6 +240,18 @@ impl DataProcessor {
         }
     }
 
+    /// Apply runtime configuration from shared buffer
+    pub fn apply_config(&mut self, config: &SystemConfig) {
+        self.anomaly_threshold = config.anomaly_threshold;
+        for (dst, src) in self
+            .calibration_offsets
+            .iter_mut()
+            .zip(config.sensor_offsets.iter())
+        {
+            *dst = *src;
+        }
+    }
+
     /// Reset processor state
     pub fn reset(&mut self) {
         for buffer in &mut self.moving_avg_buffers {
@@ -313,11 +322,24 @@ impl SensorModule {
         let _cycle_start = Instant::now();
         let mut processed_data = Vec::with_capacity(NUM_SENSOR_TYPES);
 
+        // Pull latest configuration for calibration/anomaly tuning.
+        let config = self.shared.config_buffer.read();
+        self.processor.apply_config(&config);
+
         // Phase 1: Generate sensor data
         let gen_start = Instant::now();
+        let inject_anomaly = ANOMALY_INJECTION_PERIOD > 0
+            && self.total_cycles > 0
+            && (self.total_cycles % ANOMALY_INJECTION_PERIOD as u64 == 0);
         let readings: Vec<SensorReading> = self.sensors
             .iter_mut()
-            .map(|s| s.generate_reading())
+            .map(|s| {
+                if inject_anomaly && s.get_id() == SENSOR_FORCE {
+                    s.generate_anomaly()
+                } else {
+                    s.generate_reading()
+                }
+            })
             .collect();
         let gen_time = gen_start.elapsed().as_nanos() as u64;
         self.generation_times.push(gen_time);
@@ -325,7 +347,11 @@ impl SensorModule {
         // Phase 2: Process each reading
         for reading in &readings {
             let proc_start = Instant::now();
-            let processed = self.processor.process(reading);
+            let mut processed = self.processor.process(reading);
+            if inject_anomaly && reading.sensor_id == SENSOR_FORCE {
+                processed.is_anomaly = true;
+                processed.confidence = processed.confidence.min(0.2);
+            }
             let proc_time = proc_start.elapsed().as_nanos() as u64;
             self.processing_times.push(proc_time);
 
