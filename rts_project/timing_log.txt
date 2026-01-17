@@ -1,100 +1,100 @@
 ============================================================
   RTS Manufacturing System - Timing Log
 ============================================================
-Generated at: SystemTime { intervals: 134125883170089553 }
+Generated at: SystemTime { intervals: 134130879049549537 }
 
 === Sensor Generation ===
   Iterations: 1000
-  Min: 0.200 us
-  Max: 77.300 us
-  Mean: 1.403 us
-  Std Dev: 5.201 us
-  P50: 0.500 us
-  P95: 0.900 us
-  P99: 22.000 us
-  Jitter: 77.100 us
+  Min: 0.100 us
+  Max: 1.300 us
+  Mean: 0.123 us
+  Std Dev: 0.058 us
+  P50: 0.100 us
+  P95: 0.200 us
+  P99: 0.300 us
+  Jitter: 1.200 us
 
 === Data Processing ===
   Iterations: 1000
-  Min: 0.700 us
-  Max: 31.200 us
-  Mean: 1.132 us
-  Std Dev: 1.304 us
-  P50: 1.000 us
-  P95: 1.500 us
-  P99: 1.700 us
-  Jitter: 30.500 us
+  Min: 0.200 us
+  Max: 1.000 us
+  Mean: 0.212 us
+  Std Dev: 0.040 us
+  P50: 0.200 us
+  P95: 0.300 us
+  P99: 0.300 us
+  Jitter: 0.800 us
 
 === Data Transmission ===
   Iterations: 1000
-  Min: 0.100 us
-  Max: 3.500 us
-  Mean: 0.182 us
-  Std Dev: 0.113 us
-  P50: 0.200 us
-  P95: 0.200 us
-  P99: 0.200 us
-  Jitter: 3.400 us
+  Min: 0.000 us
+  Max: 0.500 us
+  Mean: 0.047 us
+  Std Dev: 0.052 us
+  P50: 0.000 us
+  P95: 0.100 us
+  P99: 0.100 us
+  Jitter: 0.500 us
 
 === Actuator Reception ===
   Iterations: 1000
-  Min: 0.100 us
-  Max: 0.800 us
-  Mean: 0.169 us
-  Std Dev: 0.051 us
-  P50: 0.200 us
-  P95: 0.200 us
-  P99: 0.200 us
-  Jitter: 0.700 us
+  Min: 0.000 us
+  Max: 0.500 us
+  Mean: 0.045 us
+  Std Dev: 0.052 us
+  P50: 0.000 us
+  P95: 0.100 us
+  P99: 0.100 us
+  Jitter: 0.500 us
 
 === PID Control ===
   Iterations: 1000
-  Min: 0.100 us
-  Max: 0.400 us
-  Mean: 0.177 us
-  Std Dev: 0.043 us
-  P50: 0.200 us
-  P95: 0.200 us
-  P99: 0.200 us
-  Jitter: 0.300 us
+  Min: 0.000 us
+  Max: 0.100 us
+  Mean: 0.090 us
+  Std Dev: 0.031 us
+  P50: 0.100 us
+  P95: 0.100 us
+  P99: 0.100 us
+  Jitter: 0.100 us
 
 === Feedback Transmission ===
   Iterations: 1000
-  Min: 0.100 us
-  Max: 0.900 us
-  Mean: 0.133 us
-  Std Dev: 0.052 us
+  Min: 0.000 us
+  Max: 0.800 us
+  Mean: 0.062 us
+  Std Dev: 0.054 us
   P50: 0.100 us
-  P95: 0.200 us
-  P99: 0.200 us
+  P95: 0.100 us
+  P99: 0.100 us
   Jitter: 0.800 us
 
 === End-to-End Latency ===
   Iterations: 200
-  Min: 220.500 us
-  Max: 755.300 us
-  Mean: 403.167 us
-  Std Dev: 69.495 us
-  P50: 393.900 us
-  P95: 536.100 us
-  P99: 676.300 us
-  Jitter: 534.800 us
+  Min: 156.300 us
+  Max: 463.600 us
+  Mean: 213.100 us
+  Std Dev: 42.196 us
+  P50: 203.100 us
+  P95: 287.600 us
+  P99: 411.000 us
+  Jitter: 307.300 us
 
 === Lock Contention ===
   Iterations: 1000
-  Min: 0.200 us
-  Max: 41.500 us
-  Mean: 0.947 us
-  Std Dev: 1.998 us
-  P50: 0.600 us
-  P95: 2.600 us
-  P99: 7.900 us
-  Jitter: 41.300 us
+  Min: 0.100 us
+  Max: 47.700 us
+  Mean: 0.630 us
+  Std Dev: 2.450 us
+  P50: 0.200 us
+  P95: 1.500 us
+  P99: 9.500 us
+  Jitter: 47.600 us
 
 === Throughput Summary ===
-  Min: 2478.05 ops/sec
-  Max: 2478.05 ops/sec
-  Avg: 2478.05 ops/sec
+  Min: 4689.72 ops/sec
+  Max: 4689.72 ops/sec
+  Avg: 4689.72 ops/sec
 
 === Deadline Analysis ===
   Processing Deadline (200.0 us):
